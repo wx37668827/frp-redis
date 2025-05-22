@@ -1,3 +1,6 @@
+## 功能描述
+仅允许来自特定 IP 地址请求访问代理服务，IP白名单存放在REDIS中。
+
 ## 生成EXE命令
 ```sh
 go build -o frps.exe ./cmd/frps
