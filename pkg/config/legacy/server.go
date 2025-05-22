@@ -198,6 +198,12 @@ type ServerCommonConf struct {
 	PprofEnable bool `ini:"pprof_enable" json:"pprof_enable"`
 	// NatHoleAnalysisDataReserveHours specifies the hours to reserve nat hole analysis data.
 	NatHoleAnalysisDataReserveHours int64 `ini:"nat_hole_analysis_data_reserve_hours" json:"nat_hole_analysis_data_reserve_hours"`
+
+	EnableRedisIPWhitelist bool   `ini:"enable_redis_ip_whitelist" json:"enable_redis_ip_whitelist"`
+	RedisAddr              string `ini:"redis_addr" json:"redis_addr"`
+	RedisPassword          string `ini:"redis_password" json:"redis_password"`
+	RedisDB                int    `ini:"redis_db" json:"redis_db"` 
+	RedisWhitelistPrefix   string `ini:"redis_whitelist_prefix" json:"redis_whitelist_prefix"` // e.g., "ip_whitelist_"
 }
 
 // GetDefaultServerConf returns a server configuration with reasonable defaults.
