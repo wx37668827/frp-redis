@@ -36,6 +36,8 @@ import (
 	"github.com/fatedier/frp/pkg/util/xlog"
 	"github.com/fatedier/frp/server/controller"
 	"github.com/fatedier/frp/server/metrics"
+
+	 "github.com/redis/go-redis/v9"
 )
 
 var proxyFactoryRegistry = map[reflect.Type]func(*BaseProxy) Proxy{}
