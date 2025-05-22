@@ -96,6 +96,12 @@ type ServerConfig struct {
 	AllowPorts []types.PortsRange `json:"allowPorts,omitempty"`
 
 	HTTPPlugins []HTTPPluginOptions `json:"httpPlugins,omitempty"`
+
+	EnableRedisIPWhitelist bool   `ini:"enable_redis_ip_whitelist" json:"enable_redis_ip_whitelist"`
+	RedisAddr              string `ini:"redis_addr" json:"redis_addr"`
+	RedisPassword          string `ini:"redis_password" json:"redis_password"`
+	RedisDB                int    `ini:"redis_db" json:"redis_db"`  
+	RedisWhitelistPrefix   string `ini:"redis_whitelist_prefix" json:"redis_whitelist_prefix"` // e.g., "ip_whitelist_"
 }
 
 func (c *ServerConfig) Complete() {
