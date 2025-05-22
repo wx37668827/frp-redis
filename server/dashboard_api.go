@@ -16,9 +16,12 @@ package server
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"net/http"
 	"slices"
+	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -30,7 +33,15 @@ import (
 	"github.com/fatedier/frp/pkg/util/log"
 	netpkg "github.com/fatedier/frp/pkg/util/net"
 	"github.com/fatedier/frp/pkg/util/version"
+
+	"github.com/redis/go-redis/v9"
 )
+
+// 响应结构
+type IPItem struct {
+	IP       string `json:"ip"`
+	ExpireAt string `json:"expire_at"` // ISO 格式时间
+}
 
 type GeneralResponse struct {
 	Code int
@@ -54,6 +65,9 @@ func (svr *Service) registerRouteHandlers(helper *httppkg.RouterRegisterHelper) 
 	subRouter.HandleFunc("/api/proxy/{type}/{name}", svr.apiProxyByTypeAndName).Methods("GET")
 	subRouter.HandleFunc("/api/traffic/{name}", svr.apiProxyTraffic).Methods("GET")
 	subRouter.HandleFunc("/api/proxies", svr.deleteProxies).Methods("DELETE")
+	subRouter.HandleFunc("/api/redis/whitelist", svr.apiRedisWhitelist).Methods("GET")
+	subRouter.HandleFunc("/api/redis/addip", svr.apiRedisAddIp).Methods("POST")
+	subRouter.HandleFunc("/api/redis/delip", svr.apiRedisDelIp).Methods("POST")
 
 	// view
 	subRouter.Handle("/favicon.ico", http.FileServer(helper.AssetsFS)).Methods("GET")
@@ -130,6 +144,195 @@ func (svr *Service) apiServerInfo(w http.ResponseWriter, r *http.Request) {
 
 	buf, _ := json.Marshal(&svrResp)
 	res.Msg = string(buf)
+}
+
+// /api/redis
+func (svr *Service) apiRedisWhitelist(w http.ResponseWriter, r *http.Request) {
+	res := GeneralResponse{Code: 200}
+	defer func() {
+		log.Infof("http response [%s]: code [%d]", r.URL.Path, res.Code)
+		w.WriteHeader(res.Code)
+		if len(res.Msg) > 0 {
+			_, _ = w.Write([]byte(res.Msg))
+		}
+	}()
+
+	log.Infof("http request: [%s]", r.URL.Path)
+
+	// 初始化 Redis 客户端
+	cfg := svr.cfg // 假设 svr.cfg 是你的 *ServerConfig
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     cfg.RedisAddr,
+		Password: cfg.RedisPassword,
+		DB:       cfg.RedisDB,
+	})
+	ctx := context.Background()
+
+	// 扫描符合前缀的所有键
+	var cursor uint64
+	var ipList []IPItem
+	prefix := cfg.RedisWhitelistPrefix
+
+	for {
+		keys, newCursor, err := rdb.Scan(ctx, cursor, prefix+"*", 100).Result()
+		if err != nil {
+			res.Code = 500
+			res.Msg = "redis scan error: " + err.Error()
+			return
+		}
+		for _, key := range keys {
+			// 提取 IP
+			ip := strings.TrimPrefix(key, prefix)
+
+			// 获取过期时间
+			ttl, err := rdb.TTL(ctx, key).Result()
+			if err != nil {
+				continue
+			}
+
+			var expireAt string
+			if ttl > 0 {
+				expireAt = time.Now().Add(ttl).UTC().Format(time.RFC3339)
+			} else if ttl == -1 {
+				expireAt = "永不过期" // 永不过期
+			} else {
+				// 已过期或无效
+				continue
+			}
+
+			ipList = append(ipList, IPItem{
+				IP:       ip,
+				ExpireAt: expireAt,
+			})
+		}
+		if newCursor == 0 {
+			break
+		}
+		cursor = newCursor
+	}
+
+	// 构建响应 JSON
+	result := map[string]interface{}{
+		"status":    "success",
+		"whitelist": ipList,
+	}
+
+	buf, _ := json.Marshal(result)
+
+	// 构造静态响应数据
+	// svrResp := map[string]interface{}{
+	// 	"status": "success",
+	// 	"whitelist": []IPItem{
+	// 		{
+	// 			IP:       "192.168.1.100",
+	// 			ExpireAt: "2025-06-01T12:00:00Z",
+	// 		},
+	// 		{
+	// 			IP:       "10.0.0.0/24",
+	// 			ExpireAt: "2025-06-10T00:00:00Z",
+	// 		},
+	// 		{
+	// 			IP:       "127.0.0.1",
+	// 			ExpireAt: "9999-12-31T23:59:59Z", // 永久有效
+	// 		},
+	// 	},
+	// }
+
+	//	buf, _ := json.Marshal(&svrResp)
+	res.Msg = string(buf)
+}
+
+// /api/addip
+func (svr *Service) apiRedisAddIp(w http.ResponseWriter, r *http.Request) {
+	res := GeneralResponse{Code: 200}
+	defer func() {
+		log.Infof("http response [%s]: code [%d]", r.URL.Path, res.Code)
+		w.WriteHeader(res.Code)
+		if len(res.Msg) > 0 {
+			_, _ = w.Write([]byte(res.Msg))
+		}
+	}()
+
+	log.Infof("http request: [%s]", r.URL.Path)
+	// 解析参数
+	var req struct {
+		IP         string `json:"ip"`
+		ExpireDays int    `json:"expire_days"` // 0 表示永不过期
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		res.Code = 400
+		res.Msg = "invalid json"
+		return
+	}
+	if strings.TrimSpace(req.IP) == "" {
+		res.Code = 400
+		res.Msg = "ip is empty"
+		return
+	}
+
+	// Redis
+	cfg := svr.cfg
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     cfg.RedisAddr,
+		Password: cfg.RedisPassword,
+		DB:       cfg.RedisDB,
+	})
+	ctx := context.Background()
+
+	key := cfg.RedisWhitelistPrefix + req.IP
+	var expiration time.Duration
+	if req.ExpireDays <= 0 {
+		expiration = 0 // 永久
+	} else {
+		expiration = time.Duration(req.ExpireDays) * 24 * time.Hour
+	}
+
+	err := rdb.Set(ctx, key, "", expiration).Err()
+	if err != nil {
+		res.Code = 500
+		res.Msg = "redis set error: " + err.Error()
+		return
+	}
+
+	res.Msg = `{"status":"ok"}`
+}
+
+// /api/delip
+func (svr *Service) apiRedisDelIp(w http.ResponseWriter, r *http.Request) {
+	res := GeneralResponse{Code: 200}
+	defer func() {
+		log.Infof("http response [%s]: code [%d]", r.URL.Path, res.Code)
+		w.WriteHeader(res.Code)
+		if len(res.Msg) > 0 {
+			_, _ = w.Write([]byte(res.Msg))
+		}
+	}()
+
+	var req struct {
+		IP string `json:"ip"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.IP) == "" {
+		res.Code = 400
+		res.Msg = "invalid request"
+		return
+	}
+
+	cfg := svr.cfg
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     cfg.RedisAddr,
+		Password: cfg.RedisPassword,
+		DB:       cfg.RedisDB,
+	})
+	ctx := context.Background()
+
+	key := cfg.RedisWhitelistPrefix + req.IP
+	if err := rdb.Del(ctx, key).Err(); err != nil {
+		res.Code = 500
+		res.Msg = "delete redis key failed: " + err.Error()
+		return
+	}
+
+	res.Msg = `{"status":"deleted"}`
 }
 
 type BaseOutConf struct {
