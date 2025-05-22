@@ -165,6 +165,12 @@ func Convert_ServerCommonConf_To_v1(conf *ServerCommonConf) *v1.ServerConfig {
 	}
 
 	out.AllowPorts, _ = types.NewPortsRangeSliceFromString(conf.AllowPortsStr)
+
+	out.EnableRedisIPWhitelist=conf.EnableRedisIPWhitelist
+	out.RedisAddr=conf.RedisAddr
+	out.RedisPassword=conf.RedisPassword
+	out.RedisDB=conf.RedisDB
+	out.RedisWhitelistPrefix=conf.RedisWhitelistPrefix
 	return out
 }
 
