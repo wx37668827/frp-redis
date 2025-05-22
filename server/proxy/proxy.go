@@ -210,10 +210,56 @@ func (pxy *BaseProxy) startCommonTCPListenersHandler() {
 	}
 }
 
+func isIPAllowedV1(ctx context.Context, serverCfg *v1.ServerConfig, ip string) bool {
+ 
+ 
+	xlog.FromContextSafe(ctx).Infof("Redis config: Addr=%s, Password=%s, DB=%d, EnableRedisIPWhitelist=%v",
+    serverCfg.RedisAddr,
+    serverCfg.RedisPassword,
+    serverCfg.RedisDB,
+    serverCfg.EnableRedisIPWhitelist,
+)
+	if !serverCfg.EnableRedisIPWhitelist {
+		return true
+	}
+ 
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     serverCfg.RedisAddr,
+		Password: serverCfg.RedisPassword,
+		DB:       serverCfg.RedisDB,
+	})
+
+	xlog.FromContextSafe(ctx).Errorf("redis check isIPAllowed db %s",serverCfg.RedisDB)
+
+	key := serverCfg.RedisWhitelistPrefix + ip
+	exists, err := rdb.Exists(ctx, key).Result()
+	if err != nil {
+		xlog.FromContextSafe(ctx).Errorf("redis check error for key [%s]: %v", key, err)
+		return false
+	}
+	return exists == 1
+}
+
 // HandleUserTCPConnection is used for incoming user TCP connections.
 func (pxy *BaseProxy) handleUserTCPConnection(userConn net.Conn) {
 	xl := xlog.FromContextSafe(pxy.Context())
 	defer userConn.Close()
+
+	// 添加白名单验证
+	remoteIP, _, errx := net.SplitHostPort(userConn.RemoteAddr().String())
+	if errx != nil {
+		xl.Warnf("invalid remote address: %v", errx)
+		return
+	}
+
+	 
+	if !isIPAllowedV1(pxy.ctx, pxy.serverCfg, remoteIP) { 
+		xl.Warnf("IP [%s] is not in whitelist, connection rejected", remoteIP)
+		return
+	}
+	 
+	 xl.Warnf("IP [%s]  Allowed  ", remoteIP)
+	
 
 	serverCfg := pxy.serverCfg
 	cfg := pxy.configurer.GetBaseConfig()
