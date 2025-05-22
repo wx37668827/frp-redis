@@ -30,6 +30,11 @@ dashboard_addr = 0.0.0.0
 frps.exe -c frps.ini
 
  ```
+## WEB管理面板增加IP白名单管理
+![IP白名单管理](./doc/pic/ip.png)
+![redis客户端](./doc/pic/redisclient.png)
+ 
+
 ## ☕ 支持作者
 
 如果这个项目对你有帮助，欢迎支持我继续开发维护 🙏,如果您有软件开发方面的需求也请与我联系！QQ:37668827
