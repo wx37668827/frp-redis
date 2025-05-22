@@ -20,3 +20,7 @@ redis_whitelist_prefix = ip_whitelist_  #redis key 前缀，存在ip_whitelist_1
 frps.exe -c frps.ini
 
  ```
+## ☕ 支持作者
+
+如果这个项目对你有帮助，欢迎支持我继续开发维护 🙏,如果您有软件开发方面的需求也请与我联系！QQ:37668827
+
