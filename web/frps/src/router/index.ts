@@ -7,7 +7,7 @@ import ProxiesHTTPS from '../components/ProxiesHTTPS.vue'
 import ProxiesTCPMux from '../components/ProxiesTCPMux.vue'
 import ProxiesSTCP from '../components/ProxiesSTCP.vue'
 import ProxiesSUDP from '../components/ProxiesSUDP.vue'
-
+import Redis from '../components/Redis.vue'
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
@@ -15,6 +15,11 @@ const router = createRouter({
       path: '/',
       name: 'ServerOverview',
       component: ServerOverview,
+    },
+    {
+      path: '/Redis',
+      name: 'Redis',
+      component: Redis,
     },
     {
       path: '/proxies/tcp',
